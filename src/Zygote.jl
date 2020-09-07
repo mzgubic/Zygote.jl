@@ -6,7 +6,7 @@ using ArrayLayouts: MemoryLayout, AbstractColumnMajor
 
 import ZygoteRules: @adjoint, @adjoint!, AContext, adjoint, _pullback, pullback, literal_getproperty
 
-using ChainRules: ChainRules, rrule, unthunk
+using ChainRules: ChainRules, rrule, unthunk, AbstractZero, DoesNotExist, Zero
 using IRTools
 using MacroTools, Requires
 using MacroTools: @forward
