@@ -216,7 +216,7 @@ end
     x[t], Δ -> begin
         dx = _zero(x, eltype(Δ))
         dx[t] .= Δ
-        (DoesNotExist(), dx)
+        (nothing, dx) # TODO: think about this and solve broken test
     end
 end
 
@@ -467,8 +467,8 @@ _symmetric_back(Δ::LowerTriangular, uplo) = collect(uplo == 'U' ? transpose(Δ)
 
 @adjoint function Symmetric(A::AbstractMatrix, uplo=:U)
   S = Symmetric(A, uplo)
-  back(Δ::AbstractMatrix) = (_symmetric_back(Δ, S.uplo), nothing)
-  back(Δ::NamedTuple) = (_symmetric_back(Δ.data, S.uplo), nothing)
+  back(Δ::AbstractMatrix) = (_symmetric_back(Δ, S.uplo), DoesNotExist())
+  back(Δ::NamedTuple) = (_symmetric_back(Δ.data, S.uplo), DoesNotExist())
   return S, back
 end
 
@@ -491,13 +491,13 @@ end
 
 @adjoint function LinearAlgebra.Hermitian(A::AbstractMatrix, uplo=:U)
   H = Hermitian(A, uplo)
-  back(Δ::AbstractMatrix) = (_hermitian_back(Δ, H.uplo), nothing)
-  back(Δ::NamedTuple) = (_hermitian_back(Δ.data, H.uplo), nothing)
+  back(Δ::AbstractMatrix) = (_hermitian_back(Δ, H.uplo), DoesNotExist())
+  back(Δ::NamedTuple) = (_hermitian_back(Δ.data, H.uplo), DoesNotExist())
   return H, back
 end
 
 @adjoint convert(::Type{R}, A::LinearAlgebra.HermOrSym{T,S}) where {T,S,R<:Array} = convert(R, A),
-  Δ -> (nothing, convert(S, Δ),)
+  Δ -> (DoesNotExist(), convert(S, Δ),)
 @adjoint Matrix(A::LinearAlgebra.HermOrSym{T,S}) where {T,S} = Matrix(A),
   Δ -> (convert(S, Δ),)
 
@@ -510,7 +510,7 @@ end
   C = cholesky(Σ, check = check)
   return C, Δ::NamedTuple -> begin
     issuccess(C) || throw(PosDefException(C.info))
-    return Diagonal(diag(Δ.factors) .* inv.(2 .* C.factors.diag)), nothing
+    return Diagonal(diag(Δ.factors) .* inv.(2 .* C.factors.diag)), DoesNotExist()
   end
 end
 
@@ -578,12 +578,12 @@ end
   return dU, function (Δ)
     d, U = dU
     d̄, Ū = Δ
-    if Ū === nothing
+    if Ū === nothing # TODO: Should this be changed too? 
       P = Diagonal(d̄)
     else
       F = inv.(d' .- d)
       P = F .* (U' * Ū)
-      if d̄ === nothing
+      if d̄ === nothing # TODO: Should this be changed too?
         P[diagind(P)] .= 0
       else
         P[diagind(P)] = d̄
@@ -633,7 +633,7 @@ function _pullback_series_func_scalar(f, λ, args...)
   n = length(λ)
   return (fλ,
           ()->fback(ones(n))[1],
-          ()->nothing, # TODO: add 2nd deriv
+          ()->nothing, # TODO: add 2nd deriv # TODO: change this nothing too?
           isempty(args) ? _ -> () : f̄λ -> tail(fback(f̄λ)))
 end
 
@@ -667,7 +667,7 @@ _apply_series_func(f, A, args...) = f(A, args...)
     ārgs = hasargs ? argsback(diag(f̄Λ)) : ()
     P = _pairdiffquotmat(f, n, λ, conj(fλ), dfthunk(), d²fthunk())
     Ā = U * (P .* f̄Λ) * U'
-    return (nothing, Ā, ārgs...)
+    return (DoesNotExist(), Ā, ārgs...)
   end
 end
 
@@ -684,7 +684,7 @@ _hermsympow(A::Hermitian, p::Integer) = A^p
   return Ω, function (Ω̄)
     B̄ = _hermitian_back(Ω̄, 'U')
     Ā = back(B̄)[1]
-    return (Ā, nothing)
+    return (Ā, DoesNotExist())
   end
 end
 
@@ -749,44 +749,44 @@ end
 # Various sensitivities for `literal_getproperty`, depending on the 2nd argument.
 @adjoint function literal_getproperty(C::Cholesky, ::Val{:uplo})
   return literal_getproperty(C, Val(:uplo)), function(Δ)
-    return ((uplo=nothing, info=nothing, factors=nothing),)
+    return ((uplo=nothing, info=nothing, factors=nothing),) # TODO: check if these need changing
   end
 end
 @adjoint function literal_getproperty(C::Cholesky, ::Val{:info})
   return literal_getproperty(C, Val(:info)), function(Δ)
-    return ((uplo=nothing, info=nothing, factors=nothing),)
+    return ((uplo=nothing, info=nothing, factors=nothing),) # TODO: check if these need changing
   end
 end
 @adjoint function literal_getproperty(C::Cholesky, ::Val{:U})
   return literal_getproperty(C, Val(:U)), function(Δ)
     Δ_factors = C.uplo == 'U' ? UpperTriangular(Δ) : LowerTriangular(copy(Δ'))
-    return ((uplo=nothing, info=nothing, factors=Δ_factors),)
+    return ((uplo=nothing, info=nothing, factors=Δ_factors),) # TODO: check if these need changing
   end
 end
 @adjoint function literal_getproperty(C::Cholesky, ::Val{:L})
   return literal_getproperty(C, Val(:L)), function(Δ)
     Δ_factors = C.uplo == 'L' ? LowerTriangular(Δ) : UpperTriangular(copy(Δ'))
-    return ((uplo=nothing, info=nothing, factors=Δ_factors),)
+    return ((uplo=nothing, info=nothing, factors=Δ_factors),) # TODO: check if these need changing
   end
 end
 
 @adjoint function logdet(C::Cholesky)
   return logdet(C), function(Δ)
-    return ((uplo=nothing, info=nothing, factors=Diagonal(2 .* Δ ./ diag(C.factors))),)
+    return ((uplo=nothing, info=nothing, factors=Diagonal(2 .* Δ ./ diag(C.factors))),) # TODO: check if these need changing
   end
 end
 
 @adjoint function Matrix(::UniformScaling, i::Integer, j::Integer)
-  return Matrix(I, i, j), Δ -> ((λ=tr(Δ),), nothing, nothing)
+  return Matrix(I, i, j), Δ -> ((λ=tr(Δ),), DoesNotExist(), DoesNotExist())
 end
 @adjoint function Matrix(::UniformScaling, ij::NTuple{2, Integer})
-  return Matrix(I, ij), Δ -> ((λ=tr(Δ),), nothing)
+  return Matrix(I, ij), Δ -> ((λ=tr(Δ),), DoesNotExist())
 end
 @adjoint function Matrix{T}(::UniformScaling, i::Integer, j::Integer) where {T}
-  return Matrix{T}(I, i, j), Δ -> ((λ=tr(Δ),), nothing, nothing)
+  return Matrix{T}(I, i, j), Δ -> ((λ=tr(Δ),), DoesNotExist(), DoesNotExist())
 end
 @adjoint function Matrix{T}(::UniformScaling, ij::NTuple{2, Integer}) where {T}
-  return Matrix{T}(I, ij), Δ -> ((λ=tr(Δ),), nothing)
+  return Matrix{T}(I, ij), Δ -> ((λ=tr(Δ),), DoesNotExist())
 end
 @adjoint function +(A::AbstractMatrix, S::UniformScaling)
   return A + S, Δ->(Δ, (λ=tr(Δ),))
@@ -823,14 +823,14 @@ end
 @adjoint function *(P::AbstractFFTs.Plan, xs)
   return P * xs, function(Δ)
     N = prod(size(xs)[[P.region...]])
-    return (nothing, N * (P \ Δ))
+    return (DoesNotExist(), N * (P \ Δ))
   end
 end
 
 @adjoint function \(P::AbstractFFTs.Plan, xs)
   return P \ xs, function(Δ)
     N = prod(size(Δ)[[P.region...]])
-    return (nothing, (P * Δ)/N)
+    return (DoesNotExist(), (P * Δ)/N)
   end
 end
 
@@ -879,14 +879,14 @@ end
   return AbstractFFTs.irfft(xs, d), function(Δ)
     total = length(Δ)
     fullTransform = AbstractFFTs.rfft(real.(Δ))/total
-    return (fullTransform, nothing)
+    return (fullTransform, DoesNotExist())
   end
 end
 
 @adjoint function brfft(xs, d)
   return AbstractFFTs.brfft(xs, d), function(Δ)
     fullTransform = AbstractFFTs.rfft(real.(Δ))
-    return (fullTransform, nothing)
+    return (fullTransform, DoesNotExist())
   end
 end
 
@@ -897,14 +897,14 @@ end
     # dims can be int, array or tuple,
     # convert to collection for use as index
     dims = collect(dims)
-    return (AbstractFFTs.bfft(Δ, dims), nothing)
+    return (AbstractFFTs.bfft(Δ, dims), DoesNotExist())
   end
 end
 
 @adjoint function bfft(xs, dims)
   return AbstractFFTs.ifft(xs, dims), function(Δ)
     dims = collect(dims)
-    return (AbstractFFTs.fft(Δ, dims),nothing)
+    return (AbstractFFTs.fft(Δ, dims),DoesNotExist())
   end
 end
 
@@ -912,7 +912,7 @@ end
   return AbstractFFTs.ifft(xs, dims), function(Δ)
     dims = collect(dims)
     N = prod(collect(size(xs))[dims])
-    return (AbstractFFTs.fft(Δ, dims)/N,nothing)
+    return (AbstractFFTs.fft(Δ, dims)/N,DoesNotExist())
   end
 end
 
@@ -920,7 +920,7 @@ end
   return AbstractFFTs.rfft(xs, dims), function(Δ)
     dims = collect(dims)
     N = prod(collect(size(xs))[dims])
-    return (N * AbstractFFTs.irfft(Δ, size(xs,dims[1]), dims), nothing)
+    return (N * AbstractFFTs.irfft(Δ, size(xs,dims[1]), dims), DoesNotExist())
   end
 end
 
@@ -928,26 +928,26 @@ end
   return AbstractFFTs.irfft(xs, d, dims), function(Δ)
     dims = collect(dims)
     N = prod(collect(size(xs))[dims])
-    return (AbstractFFTs.rfft(real.(Δ), dims)/N, nothing, nothing)
+    return (AbstractFFTs.rfft(real.(Δ), dims)/N, DoesNotExist(), DoesNotExist())
   end
 end
 @adjoint function brfft(xs, d, dims)
   return AbstractFFTs.brfft(xs, d, dims), function(Δ)
     dims = collect(dims)
-    return (AbstractFFTs.rfft(real.(Δ), dims), nothing, nothing)
+    return (AbstractFFTs.rfft(real.(Δ), dims), DoesNotExist(), DoesNotExist())
   end
 end
 
 
 @adjoint function fftshift(x, dims)
     return fftshift(x), function(Δ)
-        return (ifftshift(Δ, dims), nothing)
+        return (ifftshift(Δ, dims), DoesNotExist())
     end
 end
 
 @adjoint function ifftshift(x, dims)
     return ifftshift(x), function(Δ)
-        return (fftshift(Δ, dims), nothing)
+        return (fftshift(Δ, dims), DoesNotExist())
     end
 end
 
@@ -956,7 +956,7 @@ end
 
 @adjoint function broadcasted(op, r::AbstractFill{<:Real})
   y, _back = Zygote.pullback(op, getindex_value(r))
-  back(Δ::AbstractFill) = (nothing, Fill(_back(getindex_value(Δ))[1], size(r)))
-  back(Δ::AbstractArray) = (nothing, getindex.(_back.(Δ), 1))
+  back(Δ::AbstractFill) = (DoesNotExist(), Fill(_back(getindex_value(Δ))[1], size(r)))
+  back(Δ::AbstractArray) = (DoesNotExist(), getindex.(_back.(Δ), 1))
   return Fill(y, size(r)), back
 end

@@ -186,7 +186,7 @@ end
   x = rand(3)
   z = [1, 2, 3, 3]
   y(x, z) = dot(ones(4), x[z])
-  @test gradient(y, x, z) == ([1, 1, 2], DoesNotExist())
+  @test gradient(y, x, z) == ([1, 1, 2], nothing)
 
   # https://github.com/FluxML/Zygote.jl/issues/376
   _, back = Zygote._pullback(x->x[1]*im, randn(2))
@@ -203,11 +203,11 @@ end
 
   # Ensure that nothings work with numeric types.
   _, back = Zygote.pullback(getindex, randn(4), [1])
-  @test back([nothing]) == (zeros(4), DoesNotExist())
+  @test back([nothing]) == (zeros(4), nothing)
 
   # Ensure that nothings work with non-numeric types.
   _, back = Zygote.pullback(getindex, [randn(2) for _ in 1:3], [1])
-  @test back([nothing]) == ([nothing for _ in 1:3], DoesNotExist())
+  @test back([nothing]) == ([nothing for _ in 1:3], nothing)
 end
 
 @testset "view" begin
@@ -1363,8 +1363,8 @@ end
 
 @testset "FillArrays" begin
   @test gradcheck(x->sum(Fill(x[], (2, 2))), [0.1])
-  @test first(Zygote.gradient(sz->sum(Ones(sz)), 6)) === DoesNotExist()
-  @test first(Zygote.gradient(sz->sum(Zeros(sz)), 6)) === DoesNotExist()
+  @test first(Zygote.gradient(sz->sum(Ones(sz)), 6)) === nothing
+  @test first(Zygote.gradient(sz->sum(Zeros(sz)), 6)) === nothing
   @test gradcheck(x->Fill(x[], 5).value, [0.1])
   @test gradcheck(x->FillArrays.getindex_value(Fill(x[], 5)), [0.1])
 
