@@ -53,7 +53,7 @@ _droplike(dy, dxv) = dy
 _droplike(dy::Union{LinearAlgebra.Adjoint, LinearAlgebra.Transpose}, dxv::AbstractVector) =
   dropdims(dy; dims=2)
 
-@adjoint getindex(::Type{T}, xs...) where {T} = T[xs...], dy -> (nothing, dy...)
+@adjoint getindex(::Type{T}, xs...) where {T} = T[xs...], dy -> (nothing, dy...) # TODO: not sure about this
 
 @adjoint! setindex!(xs::AbstractArray, x...) = setindex!(xs, x...),
   _ -> error("Mutating arrays is not supported")
@@ -70,15 +70,15 @@ end
 
 @adjoint collect(x::Array) = collect(x), Δ -> (Δ,)
 
-@adjoint fill(x::Real, dims...) = fill(x, dims...), Δ->(sum(Δ), map(_->nothing, dims)...)
+@adjoint fill(x::Real, dims...) = fill(x, dims...), Δ->(sum(Δ), map(_->DoesNotExist(), dims)...)
 
 @adjoint function circshift(A, shifts)
-  circshift(A, shifts), Δ -> (circshift(Δ, map(-, shifts)), nothing)
+  circshift(A, shifts), Δ -> (circshift(Δ, map(-, shifts)), DoesNotExist())
 end
 
 @adjoint function reverse(x::AbstractArray, args...; kwargs...)
   _reverse(t) = reverse(t, args...; kwargs...)
-  _reverse(x), Δ->(_reverse(Δ), map(_->nothing, args)...)
+  _reverse(x), Δ->(_reverse(Δ), map(_->DoesNotExist(), args)...)
 end
 
 @adjoint permutedims(xs) = permutedims(xs), Δ -> (permutedims(Δ),)
@@ -86,16 +86,16 @@ end
 @adjoint permutedims(xs::AbstractVector) = permutedims(xs), Δ -> (vec(permutedims(Δ)),)
 
 @adjoint permutedims(xs, dims) = permutedims(xs, dims),
-  Δ -> (permutedims(Δ, invperm(dims)), nothing)
+  Δ -> (permutedims(Δ, invperm(dims)), DoesNotExist())
 
 @adjoint PermutedDimsArray(xs, dims) = PermutedDimsArray(xs, dims),
-  Δ -> (PermutedDimsArray(Δ, invperm(dims)), nothing)
+  Δ -> (PermutedDimsArray(Δ, invperm(dims)), DoesNotExist())
 
 @adjoint reshape(xs, dims...) = reshape(xs, dims...),
-  Δ -> (reshape(Δ, size(xs)),map(_->nothing,dims)...)
+  Δ -> (reshape(Δ, size(xs)), map(_->DoesNotExist(), dims)...)
 
 @adjoint function hvcat(rows::Tuple{Vararg{Int}}, xs::Number...)
-  hvcat(rows, xs...), ȳ -> (nothing, permutedims(ȳ)...)
+  hvcat(rows, xs...), ȳ -> (DoesNotExist(), permutedims(ȳ)...)
 end
 
 pull_block_vert(sz, Δ, A::Number) = Δ[sz]

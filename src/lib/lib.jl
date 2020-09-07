@@ -162,7 +162,7 @@ unapply(t, xs) = _unapply(t, xs)[1]
   st = map(_empty, args)
   y, function (Δ)
     Δ = back(Δ)
-    if Δ === nothing
+    if Δ === nothing # TODO change so that nothing is not needed anymore
         return nothing
     elseif Δ isa AbstractZero
         return Δ
@@ -178,7 +178,7 @@ if VERSION >= v"1.4.0-DEV.304"
     st = map(_empty, args)
     y, function (Δ)
       Δ = back(Δ)
-      Δ === nothing ? nothing :
+      Δ === nothing ? nothing : # TODO: change as above
         (nothing, first(Δ), unapply(st, Base.tail(Δ))...)
     end
   end
