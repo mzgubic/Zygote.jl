@@ -40,11 +40,9 @@ _pullback(f, args...) = _pullback(Context(), f, args...)
 tailmemaybe(::Nothing) = nothing
 tailmemaybe(x::Tuple) = Base.tail(x)
 
-replacememaybe(t) = ntuple(i -> t[i] == DoesNotExist() ? nothing : t[i], length(t))
-
 function pullback(f, args...)
   y, back = _pullback(f, args...)
-  y, Δ -> replacememaybe(tailmemaybe(back(Δ)))
+  y, Δ -> tailmemaybe(back(Δ))
 end
 
 sensitivity(y::Number) = one(y)
