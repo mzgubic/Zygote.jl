@@ -35,7 +35,7 @@ end
 end
 
 @generated function (j::Pullback{T})(Δ) where T
-  ignore_sig(T) && return :nothing
+  ignore_sig(T) && return :DoesNotExist()
   g = try _lookup_grad(T)
   catch e
     rethrow(CompileError(T,e))
