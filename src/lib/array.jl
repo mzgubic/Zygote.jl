@@ -2,8 +2,9 @@ using Random, FillArrays, AbstractFFTs
 using FillArrays: AbstractFill, getindex_value
 using Base.Broadcast: broadcasted, broadcast_shape
 using Distributed: pmap
+using ChainRules: DoesNotExist, Zero
 
-@adjoint (::Type{T})(::UndefInitializer, args...) where T<:Array = T(undef, args...), Δ -> nothing
+@adjoint (::Type{T})(::UndefInitializer, args...) where T<:Array = T(undef, args...), Δ -> DoesNotExist()
 
 @adjoint Array(xs::AbstractArray) = Array(xs), ȳ -> (ȳ,)
 @adjoint Array(xs::Array) = Array(xs), ȳ -> (ȳ,)
@@ -20,13 +21,13 @@ using Distributed: pmap
 # Array Constructors
 @adjoint (::Type{T})(x::T) where T<:Array = T(x), ȳ -> (ȳ,)
 @adjoint function (::Type{T})(x::Number, sz) where {T <: Fill}
-    back(Δ::AbstractArray) = (sum(Δ), nothing)
-    back(Δ::NamedTuple) = (Δ.value, nothing)
+    back(Δ::AbstractArray) = (sum(Δ), DoesNotExist())
+    back(Δ::NamedTuple) = (Δ.value, DoesNotExist())
     return Fill(x, sz), back
 end
 
-@adjoint (::Type{T})(sz) where {T<:Zeros} = T(sz), Δ->(nothing,)
-@adjoint (::Type{T})(sz) where {T<:Ones} = T(sz), Δ->(nothing,)
+@adjoint (::Type{T})(sz) where {T<:Zeros} = T(sz), Δ->(DoesNotExist(),)
+@adjoint (::Type{T})(sz) where {T<:Ones} = T(sz), Δ->(DoesNotExist(),)
 
 @adjoint getindex(x::AbstractArray, inds...) = x[inds...], ∇getindex(x, inds)
 
@@ -41,7 +42,7 @@ end
     dxv = view(dx, inds...)
     dxv .= accum.(dxv, _droplike(dy, dxv))
   end
-  return (dx, map(_->nothing, inds)...)
+  return (dx, map(_->DoesNotExist(), inds)...)
 end
 
 _zero(xs::AbstractArray{<:Number}, T::Type{Nothing}) = fill!(similar(xs), zero(eltype(xs)))

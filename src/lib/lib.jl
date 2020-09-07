@@ -162,8 +162,13 @@ unapply(t, xs) = _unapply(t, xs)[1]
   st = map(_empty, args)
   y, function (Δ)
     Δ = back(Δ)
-    Δ === nothing ? nothing :
-      (first(Δ), unapply(st, Base.tail(Δ))...)
+    if Δ === nothing
+        return nothing
+    elseif Δ isa AbstractZero
+        return Δ
+    else
+        (first(Δ), unapply(st, Base.tail(Δ))...)
+    end
   end
 end
 
