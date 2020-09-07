@@ -30,13 +30,13 @@ end
 
 @adjoint deepcopy(x) = deepcopy(x), ȳ -> (ȳ,)
 
-@adjoint (::Type{V})(x...) where V<:Val = V(x...), _ -> nothing
+@adjoint (::Type{V})(x...) where V<:Val = V(x...), _ -> DoesNotExist()
 
 @adjoint ifelse(cond::Bool, t, f) =
   ifelse(cond, t, f),
-  Δ -> cond ? (nothing, Δ, zero(Δ)) : (nothing, zero(Δ), Δ)
+  Δ -> cond ? (DoesNotExist(), Δ, zero(Δ)) : (DoesNotExist(), zero(Δ), Δ)
 
-@adjoint Base.typeassert(x, T) = Base.typeassert(x, T), Δ -> (Δ, nothing)
+@adjoint Base.typeassert(x, T) = Base.typeassert(x, T), Δ -> (Δ, DoesNotExist())
 
 @generated function accum_param(cx::Context, x, Δ)
   isbitstype(x) && return :(Δ)
@@ -51,9 +51,9 @@ end
 end
 
 function accum_global(cx::Context, ref, x̄)
-  (x̄ === nothing || isconst(ref.mod, ref.name)) && return
+  (x̄ isa AbstractZero || isconst(ref.mod, ref.name)) && return Zero()
   gs = cache(cx)
-  gs[ref] = accum(get(gs, ref, nothing), x̄)
+  gs[ref] = accum(get(gs, ref, Zero()), x̄)
   return
 end
 
@@ -76,9 +76,9 @@ end
 @adjoint! function global_set(ref, x)
   global_set(ref, x), function (x̄)
     gs = cache(__context__)
-    x̄ = accum(get(gs, ref, nothing), x̄)
-    gs[ref] = nothing
-    return (nothing, x̄)
+    x̄ = accum(get(gs, ref, Zero()), x̄)
+    gs[ref] = Zero()
+    return (Zero(), x̄)
   end
 end
 
@@ -91,8 +91,8 @@ using Base: tail
 @adjoint function literal_getindex(xs::NTuple{N,Any}, ::Val{i}) where {N,i}
   val = xs[i]
   function back(Δ)
-    accum_param(__context__, val, Δ) === nothing && return
-    return ntuple(j -> i == j ? Δ : nothing, Val(N)), nothing
+    accum_param(__context__, val, Δ) isa AbstractZero && return DoesNotExist()
+    return ntuple(j -> i == j ? Δ : Zero(), Val(N)), DoesNotExist()
   end
   val, back
 end
@@ -100,45 +100,45 @@ end
 @adjoint function getindex(xs::NTuple{N,Any}, i::Integer) where N
   val = xs[i]
   function back(Δ)
-    accum_param(__context__, val, Δ) === nothing && return
-    return ntuple(j -> i == j ? Δ : nothing, Val(N)), nothing
+    accum_param(__context__, val, Δ) isa AbstractZero && return DoesNotExist()
+    return ntuple(j -> i == j ? Δ : Zero(), Val(N)), DoesNotExist()
   end
   return val, back
 end
 
 @adjoint getindex(xs::NTuple{N,Any}, r::AbstractUnitRange) where N =
-  (xs[r], Δ -> (ntuple(j -> j in r ? Δ[findfirst(isequal(j), r)] : nothing, Val(N)), nothing))
+  (xs[r], Δ -> (ntuple(j -> j in r ? Δ[findfirst(isequal(j), r)] : Zero(), Val(N)), DoesNotExist()))
 
 function _pullback(cx::Context, ::typeof(literal_indexed_iterate), xs::Tuple, ::Val{i}) where i
   y, b = _pullback(cx, literal_getindex, xs, Val(i))
-  back(::Nothing) = nothing
+  back(::Nothing) = nothing # TODO: check what to do
   back(ȳ) = b(ȳ[1])
   (y, i+1), back
 end
 
 function _pullback(cx::Context, ::typeof(literal_indexed_iterate), xs::Tuple, ::Val{i}, st) where i
   y, b = _pullback(cx, literal_getindex, xs, Val(i))
-  back(::Nothing) = nothing
-  back(ȳ) = (b(ȳ[1])..., nothing)
+  back(::Nothing) = nothing # TODO: check what to do
+  back(ȳ) = (b(ȳ[1])..., nothing) # TODO: check what to do
   (y, i+1), back
 end
 
 # Needed for iteration lowering
 @adjoint Core.getfield(xs::NTuple{N,Any}, i::Integer) where N =
-  (xs[i], Δ -> (ntuple(j -> i == j ? Δ : nothing, Val(N)), nothing))
+  (xs[i], Δ -> (ntuple(j -> i == j ? Δ : Zero(), Val(N)), DoesNotExist()))
 
 @adjoint Core.getfield(xs::NamedTuple{K,<:NTuple{N,Any}}, i::Integer) where {K,N} =
-  (xs[i], Δ -> (NamedTuple{K}(ntuple(j -> i == j ? Δ : nothing, Val(N))), nothing))
+  (xs[i], Δ -> (NamedTuple{K}(ntuple(j -> i == j ? Δ : Zero(), Val(N))), DoesNotExist()))
 
 @adjoint function Base.first(xs::Tuple)
-  drest = map(_->nothing, tail(xs))
+  drest = map(_->Zero(), tail(xs))
   first(xs), Δ -> ((Δ, drest...),)
 end
 
-@adjoint Base.tail(xs::Tuple) = tail(xs), x̄s -> ((nothing, x̄s...),)
+@adjoint Base.tail(xs::Tuple) = tail(xs), x̄s -> ((Zero(), x̄s...),)
 
 _empty(x) = length(x)
-_empty(x::Union{Tuple,NamedTuple}) = map(_->nothing, x)
+_empty(x::Union{Tuple,NamedTuple}) = map(_->Zero(), x)
 
 _unapply(t::Integer, xs) = xs[1:t], xs[t+1:end]
 _unapply(t, xs) = first(xs), tail(xs)
@@ -162,13 +162,8 @@ unapply(t, xs) = _unapply(t, xs)[1]
   st = map(_empty, args)
   y, function (Δ)
     Δ = back(Δ)
-    if Δ === nothing # TODO change so that nothing is not needed anymore
-        return nothing
-    elseif Δ isa AbstractZero
-        return Δ
-    else
-        (first(Δ), unapply(st, Base.tail(Δ))...)
-    end
+    Δ isa AbstractZero ? Zero() :
+      (first(Δ), unapply(st, Base.tail(Δ))...)
   end
 end
 
@@ -178,8 +173,8 @@ if VERSION >= v"1.4.0-DEV.304"
     st = map(_empty, args)
     y, function (Δ)
       Δ = back(Δ)
-      Δ === nothing ? nothing : # TODO: change as above
-        (nothing, first(Δ), unapply(st, Base.tail(Δ))...)
+      Δ isa AbstractZero ? Zero() :
+        (Zero(), first(Δ), unapply(st, Base.tail(Δ))...)
     end
   end
 end
@@ -190,24 +185,24 @@ deref!(x) = x
 
 function deref!(x::Ref)
   d = x[]
-  x[] = nothing
+  x[] = nothing # TODO: wat dis
   return d
 end
 
-@generated nt_nothing(x) = Expr(:tuple, [:($f=nothing) for f in fieldnames(x)]...)
+@generated nt_zero(x) = Expr(:tuple, [:($f=Zero()) for f in fieldnames(x)]...)
 
 @generated pair(::Val{k}, v) where k = :($k = v,)
 
 @adjoint function literal_getproperty(x, ::Val{f}) where f
   val = getproperty(x, f)
   function back(Δ)
-    accum_param(__context__, val, Δ) === nothing && return
+    accum_param(__context__, val, Δ) isa AbstractZero && return DoesNotExist()
     if isimmutable(x)
-      ((;nt_nothing(x)...,pair(Val(f), Δ)...), nothing)
+      ((;nt_zero(x)...,pair(Val(f), Δ)...), DoesNotExist())
     else
       dx = grad_mut(__context__, x)
       dx[] = (;dx[]...,pair(Val(f),accum(getfield(dx[], f), Δ))...)
-      return (dx,nothing)
+      return (dx, DoesNotExist())
     end
   end
   unwrap(val), back
@@ -225,7 +220,7 @@ _pullback(cx::Context, ::typeof(literal_getindex), x::NamedTuple, ::Val{f}) wher
 _pullback(cx::Context, ::typeof(literal_getproperty), x::Tuple, ::Val{f}) where f =
   _pullback(cx, literal_getindex, x, Val(f))
 
-grad_mut(x) = Ref{Any}(nt_nothing(x))
+grad_mut(x) = Ref{Any}(nt_zero(x))
 
 function grad_mut(cx::Context, x)
   ch = cache(cx)
@@ -241,8 +236,8 @@ end
   g = grad_mut(__context__, x)
   y, function (_)
     Δ = getfield(g[], f)
-    g[] = (;g[]...,pair(Val(f),nothing)...)
-    (nothing, nothing, Δ)
+    g[] = (;g[]..., pair(Val(f), Zero())...)
+    (Zero(), DoesNotExist(), Δ)
   end
 end
 
@@ -254,35 +249,35 @@ Jnew{T}(g) where T = Jnew{T,typeof(g)}(g)
 
 @adjoint! function __new__(T, args...)
   x = __new__(T, args...)
-  g = !T.mutable || fieldcount(T) == 0 ? nothing : grad_mut(__context__, x)
+  g = !T.mutable || fieldcount(T) == 0 ? nothing : grad_mut(__context__, x) # TODO: not sure about this
   x, Jnew{T,typeof(g),false}(g)
 end
 
 @adjoint! function __splatnew__(T, args)
   x = __splatnew__(T, args)
-  g = !T.mutable || fieldcount(T) == 0 ? nothing : grad_mut(__context__, x)
+  g = !T.mutable || fieldcount(T) == 0 ? nothing : grad_mut(__context__, x) # TODO: not sure about this
   x, Jnew{T,typeof(g),true}(g)
 end
 
 # TODO captured mutables + multiple calls to `back`
-@generated function (back::Jnew{T,G,false})(Δ::Union{NamedTuple,Nothing,RefValue}) where {T,G}
+@generated function (back::Jnew{T,G,false})(Δ::Union{NamedTuple,Nothing,RefValue}) where {T,G} # TODO 
   !T.mutable && Δ == Nothing && return :nothing
   Δ = G == Nothing ? :Δ :
       Δ <: RefValue ? :(back.g[]) :
       :(accum(back.g[], Δ))
   quote
     x̄ = $Δ
-    $(G == Nothing || :(back.g[] = nt_nothing($Δ)))
+    $(G == Nothing || :(back.g[] = nt_zero($Δ)))
     (nothing, $(map(f -> :(x̄.$f), fieldnames(T))...))
   end
 end
 
-@generated function (back::Jnew{T,G,true})(Δ::Union{NamedTuple,Nothing,RefValue}) where {T,G}
+@generated function (back::Jnew{T,G,true})(Δ::Union{NamedTuple,Nothing,RefValue}) where {T,G} # TODO 
   !T.mutable && Δ == Nothing && return :nothing
   Δ = G == Nothing ? :Δ : :(back.g)
   quote
     x̄ = $Δ
-    $(G == Nothing || :($Δ = nt_nothing($Δ)))
+    $(G == Nothing || :($Δ = nt_zero($Δ)))
     (nothing, ($(map(f -> :(x̄.$f), fieldnames(T))...),))
   end
 end
