@@ -53,7 +53,7 @@ _droplike(dy, dxv) = dy
 _droplike(dy::Union{LinearAlgebra.Adjoint, LinearAlgebra.Transpose}, dxv::AbstractVector) =
   dropdims(dy; dims=2)
 
-@adjoint getindex(::Type{T}, xs...) where {T} = T[xs...], dy -> (nothing, dy...) # TODO: not sure about this
+@adjoint getindex(::Type{T}, xs...) where {T} = T[xs...], dy -> (DoesNotExist(), dy...)
 
 @adjoint! setindex!(xs::AbstractArray, x...) = setindex!(xs, x...),
   _ -> error("Mutating arrays is not supported")
@@ -144,16 +144,16 @@ end
 end
 
 @adjoint repeat(x::AbstractVector, m::Integer) =
-   repeat(x, m), ȳ -> (dropdims(sum(reshape(ȳ, length(x), :); dims=2); dims=2), nothing)
+  repeat(x, m), ȳ -> (dropdims(sum(reshape(ȳ, length(x), :); dims=2); dims=2), DoesNotExist())
 
 @adjoint function repeat(x::AbstractVecOrMat, m::Integer, n::Integer=1)
    return repeat(x, m, n), function (ȳ)
       ȳ′ = reshape(ȳ, size(x,1), m, size(x,2), n)
-      return reshape(sum(ȳ′; dims=(2,4)), size(x)), nothing, nothing
+      return reshape(sum(ȳ′; dims=(2,4)), size(x)), DoesNotExist(), DoesNotExist()
    end
 end
 
-@adjoint getindex(i::Int, j::Int) = i[j], _ -> nothing
+@adjoint getindex(i::Int, j::Int) = i[j], _ -> DoesNotExist() # what does this even mean? 5[2]?!
 
 struct StaticGetter{i} end
 (::StaticGetter{i})(v) where {i} = v[i]
@@ -178,7 +178,7 @@ for (mapfunc,∇mapfunc) in [(:map,:∇map),(:pmap,:∇pmap),(:vmap,:∇vmap)]
   @eval function $∇mapfunc(cx, f, args...)
     ys_and_backs = $mapfunc((args...) -> _pullback(cx, f, args...), args...)
     if isempty(ys_and_backs)
-      ys_and_backs, _ -> nothing
+      ys_and_backs, _ -> DoesNotExist()
     else
       ys, backs = unzip(ys_and_backs)
       ys, function (Δ)
@@ -204,7 +204,7 @@ function _pullback(cx::AContext, ::typeof(collect), g::Base.Generator)
   end
 end
 
-@adjoint iterate(r::UnitRange, i...) = iterate(r, i...), _ -> nothing
+@adjoint iterate(r::UnitRange, i...) = iterate(r, i...), _ -> DoesNotExist()
 
 @adjoint function sort(x::AbstractArray; by=identity)
   p = sortperm(x, by=by)
@@ -216,7 +216,7 @@ end
     x[t], Δ -> begin
         dx = _zero(x, eltype(Δ))
         dx[t] .= Δ
-        (nothing, dx)
+        (DoesNotExist(), dx)
     end
 end
 
@@ -241,7 +241,7 @@ function _pullback(cx::AContext, kwtype, kws, ::typeof(sum), f, xs::AbstractArra
 end
 
 @adjoint function sum(::typeof(abs2), X::AbstractArray; dims = :)
-  return sum(abs2, X; dims=dims), Δ::Union{Number, AbstractArray}->(nothing, ((2Δ) .* X))
+  return sum(abs2, X; dims=dims), Δ::Union{Number, AbstractArray}->(DoesNotExist(), ((2Δ) .* X))
 end
 
 @adjoint function prod(xs::AbstractArray; dims = :)
@@ -257,7 +257,7 @@ end
 @adjoint function maximum(xs::AbstractArray; dims = :)
   max, i = findmax(xs, dims = dims)
   max, function (Δ)
-    Δ isa Real && abs(Δ) <= sqrt(eps(float(Δ))) && return nothing
+    Δ isa Real && abs(Δ) <= sqrt(eps(float(Δ))) && return DoesNotExist() # why does it check for machine precision here, and not say below for minimum?
     Δ′ = zero(xs)
     Δ′[i] = Δ
     return (Δ′,)
