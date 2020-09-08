@@ -1,4 +1,4 @@
-grad_mut(b::Buffer) = fill!(similar(b.data, Any), nothing)
+grad_mut(b::Buffer) = fill!(similar(b.data, Any), DoesNotExist())
 grad_mut(b::Buffer{T}) where T<:Number = fill!(similar(b.data, float(T)), 0)
 
 @nograd Buffer
@@ -15,13 +15,13 @@ end
   setindex!(b, v, i...), function (_)
     grad = grad_mut(__context__, b)
     v̄ = grad[i...]
-    zero = eltype(grad) <: Number ? 0 : nothing
+    zero = eltype(grad) <: Number ? 0 : DoesNotExist()
     if i isa NTuple{N,Integer} where N
       grad[i...] = zero
     else
       grad[i...] .= zero
     end
-    (nothing, v̄, map(_->nothing, i)...)
+    (DoesNotExist(), v̄, map(_->DoesNotExist(), i)...)
   end
 end
 
@@ -29,15 +29,15 @@ end
   copyto!(b, xs), function (_)
     grad = grad_mut(__context__, b)
     x̄s = copy(grad)
-    grad .= eltype(grad) <: Number ? 0 : nothing
-    return (nothing, x̄s)
+    grad .= eltype(grad) <: Number ? 0 : DoesNotExist() # what does this even do? is x̄s also changed at all?
+    return (DoesNotExist(), x̄s)
   end
 end
 
 @adjoint! function push!(b::Buffer, x)
   push!(b, x), function (y)
     grad = grad_mut(__context__, b)
-    return (nothing, pop!(grad))
+    return (DoesNotExist(), pop!(grad))
   end
 end
 
