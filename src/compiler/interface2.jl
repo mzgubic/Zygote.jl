@@ -41,7 +41,7 @@ end
     rethrow(CompileError(T,e))
   end
   if g isa AbstractZero
-    Δ <: AbstractZero && return :(DoesNotExist())
+    Δ <: Union{AbstractZero, Nothing} && return :(DoesNotExist())
     return :(error("Non-differentiable function $(repr(j.t[1]))"))
   end
   meta, _, back = g
