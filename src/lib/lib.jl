@@ -261,7 +261,7 @@ end
 
 # TODO captured mutables + multiple calls to `back`
 @generated function (back::Jnew{T,G,false})(Δ::Union{NamedTuple,AbstractZero,RefValue}) where {T,G}
-  !T.mutable && Δ isa AbstractZero && return :DoesNotExist()
+  !T.mutable && Δ isa AbstractZero && return :(DoesNotExist())
   Δ = G isa AbstractZero ? :Δ :
       Δ <: RefValue ? :(back.g[]) :
       :(accum(back.g[], Δ))
@@ -273,7 +273,7 @@ end
 end
 
 @generated function (back::Jnew{T,G,true})(Δ::Union{NamedTuple,AbstractZero,RefValue}) where {T,G}
-  !T.mutable && Δ isa AbstractZero && return :DoesNotExist()
+  !T.mutable && Δ isa AbstractZero && return :(DoesNotExist())
   Δ = G isa AbstractZero ? :Δ : :(back.g)
   quote
     x̄ = $Δ
