@@ -40,8 +40,8 @@ end
   catch e
     rethrow(CompileError(T,e))
   end
-  if g == nothing
-    Δ == Nothing && return :nothing
+  if g isa AbstractZero
+    Δ <: AbstractZero && return :(DoesNotExist())
     return :(error("Non-differentiable function $(repr(j.t[1]))"))
   end
   meta, _, back = g
