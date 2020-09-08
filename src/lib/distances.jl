@@ -12,7 +12,7 @@ end
 @adjoint function colwise(s::SqEuclidean, x::AbstractMatrix, y::AbstractMatrix)
   return colwise(s, x, y), function (Δ::AbstractVector)
     x̄ = 2 .* Δ' .* (x .- y)
-    return nothing, x̄, -x̄
+    return DoesNotExist(), x̄, -x̄
   end
 end
 
@@ -28,7 +28,7 @@ end
   function(Δ)
     x̄ = 2 .* (x * Diagonal(vec(sum(Δ; dims=2))) .- y * transpose(Δ))
     ȳ = 2 .* (y * Diagonal(vec(sum(Δ; dims=1))) .- x * Δ)
-    return (nothing, f(x̄), f(ȳ))
+    return (DoesNotExist(), f(x̄), f(ȳ))
   end
 
 @adjoint function pairwise(s::SqEuclidean, x::AbstractMatrix; dims::Int=2)
@@ -43,7 +43,7 @@ end
   function(Δ)
     d1 = Diagonal(vec(sum(Δ; dims=1)))
     d2 = Diagonal(vec(sum(Δ; dims=2)))
-    return (nothing, x * (2 .* (d1 .+ d2 .- Δ .- transpose(Δ))) |> f)
+    return (DoesNotExist(), x * (2 .* (d1 .+ d2 .- Δ .- transpose(Δ))) |> f)
   end
 
 @adjoint function (::Euclidean)(x::AbstractVector, y::AbstractVector)
@@ -60,7 +60,7 @@ end
   d = colwise(s, x, y)
   return d, function (Δ::AbstractVector)
     x̄ = (Δ ./ d)' .* (x .- y)
-    return nothing, x̄, -x̄
+    return DoesNotExist(), x̄, -x̄
   end
 end
 
@@ -71,7 +71,7 @@ end
     Y,
   )
   D .= sqrt.(D)
-  return D, Δ -> (nothing, back(Δ ./ (2 .* D))...)
+  return D, Δ -> (DoesNotExist(), back(Δ ./ (2 .* D))...)
 end
 
 @adjoint function pairwise(::Euclidean, X::AbstractMatrix; dims=2)
@@ -80,6 +80,6 @@ end
   return D, function(Δ)
     Δ = Δ ./ (2 .* D)
     Δ[diagind(Δ)] .= 0
-    return (nothing, first(back(Δ)))
+    return (DoesNotExist(), first(back(Δ)))
   end
 end
