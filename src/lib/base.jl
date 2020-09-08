@@ -5,7 +5,7 @@ grad_mut(::AbstractVector) = []
 @adjoint! function _push!(a::Vector, x)
   _push!(a, x), function (y)
     dstk = grad_mut(__context__, a)
-    return (nothing, pop!(dstk))
+    return (Zero(), pop!(dstk))
   end
 end
 
@@ -31,16 +31,16 @@ end
 @adjoint function getindex(d::AbstractDict, k)
   d[k], function (Δ)
     grad = grad_mut(__context__, d)
-    grad[k] = accum(get(grad, k, nothing), Δ)
-    return (grad, nothing)
+    grad[k] = accum(get(grad, k, Zero()), Δ)
+    return (grad, DoesNotExist())
   end
 end
 
 @adjoint! function setindex!(d::AbstractDict, v, k)
   setindex!(d, v, k), function (_)
-    Δ = get(grad_mut(__context__, d), k, nothing)
+    Δ = get(grad_mut(__context__, d), k, DoesNotExist())
     delete!(grad_mut(__context__, d), k)
-    (nothing, Δ, nothing)
+    (DoesNotExist(), Δ, DoesNotExist())
   end
 end
 
@@ -53,7 +53,7 @@ grad_mut(ch::Channel) = Channel(ch.sz_max)
 @adjoint! function put!(ch::Channel, x)
   put!(ch, x), function (ȳ)
     x̄ = take!(grad_mut(__context__, ch))
-    (nothing, accum(x̄, ȳ), nothing)
+    (DoesNotExist(), accum(x̄, ȳ), DoesNotExist())
   end
 end
 
@@ -85,11 +85,11 @@ function runadjoint(cx, t, ȳ = nothing)
 end
 
 @adjoint! function wait(t::Task)
-  wait(t), _ -> (runadjoint(__context__, t); nothing)
+  wait(t), _ -> (runadjoint(__context__, t); DoesNotExist())
 end
 
 @adjoint! function fetch(t::Task)
-  fetch(t), ȳ -> (runadjoint(__context__, t, ȳ); nothing)
+  fetch(t), ȳ -> (runadjoint(__context__, t, ȳ); DoesNotExist())
 end
 
 @adjoint! function Base.sync_end(refs)
@@ -98,7 +98,7 @@ end
 
 # Make @sync work
 # Safe as long as other kinds of mutation are disallowed
-@adjoint push!(refs::Vector{Any}, t::Task) = push!(refs, t), _ -> nothing
+@adjoint push!(refs::Vector{Any}, t::Task) = push!(refs, t), _ -> DoesNotExist()
 
 # named tuple
 @adjoint function pairs(t::NamedTuple{N}) where N
@@ -116,7 +116,7 @@ end
 @adjoint function Base.getfield(p::Pair, i::Int)
     function pair_getfield(Δ)
         f, s = i == 1 ? (Δ, zero(p[2])) : (zero(p[1]), Δ)
-        return (first=f, second=s), nothing
+        return (first=f, second=s), DoesNotExist()
     end
     return getfield(p, i), pair_getfield
 end
