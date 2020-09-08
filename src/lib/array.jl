@@ -215,7 +215,7 @@ end
     x[t], Δ -> begin
         dx = _zero(x, eltype(Δ))
         dx[t] .= Δ
-        (nothing, dx) # TODO: think about this and solve broken test
+        (DoesNotExist(), dx)
     end
 end
 
