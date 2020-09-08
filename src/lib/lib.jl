@@ -111,15 +111,15 @@ end
 
 function _pullback(cx::Context, ::typeof(literal_indexed_iterate), xs::Tuple, ::Val{i}) where i
   y, b = _pullback(cx, literal_getindex, xs, Val(i))
-  back(::Nothing) = nothing # TODO: check what to do
+  back(ȳ::AbstractZero) = ȳ
   back(ȳ) = b(ȳ[1])
   (y, i+1), back
 end
 
 function _pullback(cx::Context, ::typeof(literal_indexed_iterate), xs::Tuple, ::Val{i}, st) where i
   y, b = _pullback(cx, literal_getindex, xs, Val(i))
-  back(::Nothing) = nothing # TODO: check what to do
-  back(ȳ) = (b(ȳ[1])..., nothing) # TODO: check what to do
+  back(ȳ::Nothing) = ȳ
+  back(ȳ) = (b(ȳ[1])..., Zero())
   (y, i+1), back
 end
 
@@ -249,36 +249,36 @@ Jnew{T}(g) where T = Jnew{T,typeof(g)}(g)
 
 @adjoint! function __new__(T, args...)
   x = __new__(T, args...)
-  g = !T.mutable || fieldcount(T) == 0 ? nothing : grad_mut(__context__, x) # TODO: not sure about this
+  g = !T.mutable || fieldcount(T) == 0 ? DoesNotExist() : grad_mut(__context__, x)
   x, Jnew{T,typeof(g),false}(g)
 end
 
 @adjoint! function __splatnew__(T, args)
   x = __splatnew__(T, args)
-  g = !T.mutable || fieldcount(T) == 0 ? nothing : grad_mut(__context__, x) # TODO: not sure about this
+  g = !T.mutable || fieldcount(T) == 0 ? DoesNotExist() : grad_mut(__context__, x)
   x, Jnew{T,typeof(g),true}(g)
 end
 
 # TODO captured mutables + multiple calls to `back`
-@generated function (back::Jnew{T,G,false})(Δ::Union{NamedTuple,Nothing,RefValue}) where {T,G} # TODO 
-  !T.mutable && Δ == Nothing && return :nothing
-  Δ = G == Nothing ? :Δ :
+@generated function (back::Jnew{T,G,false})(Δ::Union{NamedTuple,AbstractZero,RefValue}) where {T,G}
+  !T.mutable && Δ isa AbstractZero && return :DoesNotExist()
+  Δ = G isa AbstractZero ? :Δ :
       Δ <: RefValue ? :(back.g[]) :
       :(accum(back.g[], Δ))
   quote
     x̄ = $Δ
-    $(G == Nothing || :(back.g[] = nt_zero($Δ)))
-    (nothing, $(map(f -> :(x̄.$f), fieldnames(T))...))
+    $(G isa AbstractZero || :(back.g[] = nt_zero($Δ)))
+    (DoesNotExist(), $(map(f -> :(x̄.$f), fieldnames(T))...))
   end
 end
 
-@generated function (back::Jnew{T,G,true})(Δ::Union{NamedTuple,Nothing,RefValue}) where {T,G} # TODO 
-  !T.mutable && Δ == Nothing && return :nothing
-  Δ = G == Nothing ? :Δ : :(back.g)
+@generated function (back::Jnew{T,G,true})(Δ::Union{NamedTuple,AbstractZero,RefValue}) where {T,G}
+  !T.mutable && Δ isa AbstractZero && return :DoesNotExist()
+  Δ = G isa AbstractZero ? :Δ : :(back.g)
   quote
     x̄ = $Δ
-    $(G == Nothing || :($Δ = nt_zero($Δ)))
-    (nothing, ($(map(f -> :(x̄.$f), fieldnames(T))...),))
+    $(G isa AbstractZero || :($Δ = nt_zero($Δ)))
+    (DoesNotExist(), ($(map(f -> :(x̄.$f), fieldnames(T))...),))
   end
 end
 
