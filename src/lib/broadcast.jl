@@ -35,8 +35,8 @@ accum_sum(xs; dims = :) = reduce(accum, xs, dims = dims)
 
 # Work around reducedim_init issue
 # https://github.com/JuliaLang/julia/issues/31427
-accum_sum(xs::Nothing; dims = :) = nothing
-accum_sum(xs::AbstractArray{Nothing}; dims = :) = nothing
+accum_sum(xs::AbstractZero; dims = :) = DoesNotExist()
+accum_sum(xs::AbstractArray{AbstractZero}; dims = :) = DoesNotExist()
 accum_sum(xs::AbstractArray{<:Number}; dims = :) = sum(xs, dims = dims)
 accum_sum(xs::AbstractArray{<:AbstractArray{<:Number}}; dims = :) = sum(xs, dims = dims)
 accum_sum(xs::Number; dims = :) = xs
@@ -57,7 +57,7 @@ unbroadcast(x::Number, x̄) = accum_sum(x̄)
 unbroadcast(x::Tuple{<:Any}, x̄) = (accum_sum(x̄),)
 unbroadcast(x::Base.RefValue, x̄) = (x=accum_sum(x̄),)
 
-unbroadcast(x::AbstractArray, x̄::Nothing) = nothing
+unbroadcast(x::AbstractArray, x̄::AbstractZero) = x
 
 # Split Reverse Mode
 # ==================
@@ -69,44 +69,44 @@ unbroadcast(x::AbstractArray, x̄::Nothing) = nothing
 Numeric{T<:Number} = Union{T,AbstractArray{<:T}}
 
 @adjoint broadcasted(::typeof(+), xs::Numeric...) =
-  broadcast(+, xs...), ȳ -> (nothing, map(x -> unbroadcast(x, ȳ), xs)...)
+  broadcast(+, xs...), ȳ -> (DoesNotExist(), map(x -> unbroadcast(x, ȳ), xs)...)
 
 @adjoint broadcasted(::typeof(-), x::Numeric, y::Numeric) = x .- y,
-  Δ -> (nothing, unbroadcast(x, Δ), -unbroadcast(y, Δ))
+  Δ -> (DoesNotExist(), unbroadcast(x, Δ), -unbroadcast(y, Δ))
 
 @adjoint broadcasted(::typeof(*), x::Numeric, y::Numeric) = x.*y,
-  z̄ -> (nothing, unbroadcast(x, z̄ .* conj.(y)), unbroadcast(y, z̄ .* conj.(x)))
+  z̄ -> (DoesNotExist(), unbroadcast(x, z̄ .* conj.(y)), unbroadcast(y, z̄ .* conj.(x)))
 
 @adjoint function broadcasted(::typeof(/), x::Numeric, y::Numeric)
   res = x ./ y
-  res, Δ -> (nothing, unbroadcast(x, Δ ./ conj.(y)), unbroadcast(y, -Δ .* conj.(res ./ y)))
+  res, Δ -> (DoesNotExist(), unbroadcast(x, Δ ./ conj.(y)), unbroadcast(y, -Δ .* conj.(res ./ y)))
 end
 
 @adjoint function broadcasted(::typeof(Base.literal_pow), ::typeof(^), x::Numeric, exp::Val{p}) where p
   y = Base.literal_pow.(^, x, exp)
-  y, ȳ -> (nothing, nothing, ȳ .* p .* conj.(x .^ (p - 1)), nothing)
+  y, ȳ -> (DoesNotExist(), DoesNotExist(), ȳ .* p .* conj.(x .^ (p - 1)), Zero())
 end
 
-@adjoint broadcasted(::typeof(identity), x::Numeric) = x, Δ -> (nothing, Δ)
+@adjoint broadcasted(::typeof(identity), x::Numeric) = x, Δ -> (DoesNotExist(), Δ)
 
 @adjoint function broadcasted(::typeof(σ), x::Numeric)
   y = σ.(x)
-  y, ȳ -> (nothing, ȳ .* conj.(y .* (1 .- y)))
+  y, ȳ -> (DoesNotExist(), ȳ .* conj.(y .* (1 .- y)))
 end
 
 @adjoint function broadcasted(::typeof(tanh), x::Numeric)
   y = tanh.(x)
-  y, ȳ -> (nothing, ȳ .* conj.(1 .- y.^2))
+  y, ȳ -> (DoesNotExist(), ȳ .* conj.(1 .- y.^2))
 end
 
 @adjoint broadcasted(::typeof(conj), x::Numeric) =
-  conj.(x), z̄ -> (nothing, conj.(z̄))
+  conj.(x), z̄ -> (DoesNotExist(), conj.(z̄))
 
 @adjoint broadcasted(::typeof(real), x::Numeric) =
-  real.(x), z̄ -> (nothing, real.(z̄))
+  real.(x), z̄ -> (DoesNotExist(), real.(z̄))
 
 @adjoint broadcasted(::typeof(imag), x::Numeric) =
-  imag.(x), z̄ -> (nothing, im .* real.(z̄))
+  imag.(x), z̄ -> (DoesNotExist(), im .* real.(z̄))
 
 # General Fallback
 # ================
@@ -127,8 +127,8 @@ end
 _broadcast(f::F, x...) where F = materialize(broadcasted(f, x...))
 
 _get(x::Tuple, i) = x[i]
-_get(::Nothing, i) = nothing
-collapse_nothings(xs::Vector{Nothing}) = nothing
+_get(x::AbstractZero, i) = x
+collapse_nothings(xs::Vector{AbstractZero}) = DoesNotExist()
 collapse_nothings(xs) = xs
 
 @adjoint function broadcasted(::AbstractArrayStyle, f, args...)
@@ -139,7 +139,7 @@ collapse_nothings(xs) = xs
   y, function (ȳ)
     dxs_zip = map((∂b, ȳ) -> ∂b(ȳ), ∂b, ȳ)
     dxs = collapse_nothings.(ntuple(i -> map(x -> _get(x, i), dxs_zip), len))
-    (nothing, accum_sum(dxs[1]), map(unbroadcast, args, Base.tail(dxs))...)
+    (DoesNotExist(), accum_sum(dxs[1]), map(unbroadcast, args, Base.tail(dxs))...)
   end
 end
 
@@ -148,7 +148,7 @@ end
   y, ∂b = _broadcast((x...) -> _pullback(__context__, f, x...), args...)
   y, function (ȳ)
     dxs = ∂b(ȳ)
-    (nothing, dxs...)
+    (DoesNotExist(), dxs...)
   end
 end
 
@@ -186,7 +186,7 @@ end
 @inline function broadcast_forward(f, args::Vararg{Any,N}) where N
   T = Broadcast.combine_eltypes(f, args)
   out = dual_function(f).(args...)
-  eltype(out) <: Dual || return (out, _ -> nothing)
+  eltype(out) <: Dual || return (out, _ -> DoesNotExist())
   y = map(x -> x.value, out)
   _back(ȳ, i) = unbroadcast(args[i], ((a, b) -> a*b.partials[i]).(ȳ, out))
   back(ȳ) = ntuple(i -> _back(ȳ, i), N)
@@ -198,7 +198,7 @@ end
   
   @adjoint function broadcasted(::CuArrayStyle, f, args...)
     y, back = broadcast_forward(CUDA.cufunc(f), args...)
-    y, ȳ -> (nothing, nothing, back(ȳ)...)
+    y, ȳ -> (DoesNotExist(), DoesNotExist(), back(ȳ)...)
   end
 
   @adjoint CUDA.CuArray{N,T}(xs::Array) where {N,T} =
@@ -210,7 +210,7 @@ end
   end
 
   @adjoint function Base.convert(::Type{T}, xs::Array)  where {T<:CUDA.CuArray}
-    Base.convert(T, xs), Δ -> (nothing, Base.convert(Array, Δ),)
+    Base.convert(T, xs), Δ -> (DoesNotExist(), Base.convert(Array, Δ),)
   end
 
 end
